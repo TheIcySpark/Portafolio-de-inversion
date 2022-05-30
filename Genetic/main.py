@@ -82,14 +82,22 @@ class Population:
         h2.normalize()
         return [h1, h2]
 
+    def __select_different_chromosome_index(self, index_list: list):
+        index2 = index_list[0]
+        while index2 in index_list:
+            index2 = random.randint(0, len(self.chromosomes) - 1)
+        return index2
+
     def __select_by_tournament(self):
         children = np.array([])
         for i in range(40):
             alpha = random.random()
             f1_index = random.randint(0, len(self.chromosomes) - 1)
-            f2_index = f1_index
-            while f1_index == f2_index:
-                f2_index = random.randint(0, len(self.chromosomes) - 1)
+            f2_index = self.__select_different_chromosome_index([f1_index])
+            f3_index = self.__select_different_chromosome_index([f1_index, f2_index])
+            sorted_index_list = sorted([f1_index, f2_index, f3_index])
+            f1_index = sorted_index_list[1]
+            f2_index = sorted_index_list[2]
             children = np.append(children, self.__cross(f1_index, f2_index, alpha))
         return children
 
@@ -111,8 +119,17 @@ class Population:
         children = self.__select_by_tournament()
         self.__mutate(children)
         self.__replacement(children)
+        self.__prepare_for_next_iteration()
 
-    def prepare_for_next_iteration(self):
+    def next_generation_by_differential_evolution(self):
+        mutation_vector = np.array([])
+        for i in range(len(self.chromosomes)):
+            c1 = self.__select_different_chromosome_index([i])
+            c2 = self.__select_different_chromosome_index([i, c1])
+            f = 0.63
+            # mutation_vector = np.append(mutation_vector, [[x for x in ]])
+
+    def __prepare_for_next_iteration(self):
         self.fitness = np.array([])
 
 
@@ -127,9 +144,8 @@ if __name__ == '__main__':
     print("start")
     print(population.fitness[-1])
     best_fitness_history = [population.fitness[-1]]
-    enough_convergence = 75
+    enough_convergence = 80
     while enough_convergence != 0:
-        population.prepare_for_next_iteration()
         population.next_generation()
         population.compute_fitness(portfolio.average_expected_return.to_numpy(copy=True), portfolio.covariance)
         population.sort()
@@ -137,7 +153,7 @@ if __name__ == '__main__':
         if best_fitness_history[-1] == best_fitness_history[-2]:
             enough_convergence -= 1
         else:
-            enough_convergence = 75
+            enough_convergence = 80
     print(population.fitness[-1])
     plt.plot([i for i in range(len(best_fitness_history))], best_fitness_history)
     plt.show()
