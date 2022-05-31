@@ -18,6 +18,17 @@ class Chromosome:
     def normalize(self):
         self.genes = [x / sum(self.genes) for x in self.genes]
 
+    def compute_risk(self, covariance):
+        risk = 0
+        for i in range(0, len(self.genes)):
+            for j in range(0, len(self.genes)):
+                risk += self.genes[i] * self.genes[j] * covariance[i][j]
+        return risk
+
+    def compute_chromosome_return(self, average_expected_returns):
+        return sum([average_expected_returns[0][i] * self.genes[i] for i in range(len(
+                average_expected_returns[0]))])
+
 
 class PortfolioData:
     def __init__(self):
@@ -45,42 +56,59 @@ class PortfolioData:
 
 
 class Population:
-    def __init__(self):
+    def __init__(self, average_expected_returns, covariance):
         self.chromosomes = np.array([Chromosome() for i in range(100)])
         self.fitness = np.array([])
+        self.__compute_fitness(average_expected_returns, covariance)
+        self.__sort()
 
-    def compute_risk(self, chromosome, covariance):
-        risk = 0
-        for i in range(0, len(chromosome.genes)):
-            for j in range(0, len(chromosome.genes)):
-                risk += chromosome.genes[i] * chromosome.genes[j] * covariance[i][j]
-        return risk
+    def next_generation(self, average_expected_returns, covariance):
+        children = self.__select_by_tournament()
+        self.__mutate(children)
+        self.__replacement(children)
+        self.fitness = np.array([])
+        self.__compute_fitness(average_expected_returns, covariance)
+        self.__sort()
 
-    def compute_chromosome_return(self, chromosome, average_expected_returns):
-        return sum([average_expected_returns[0][i] * chromosome.genes[i] for i in range(len(
-                average_expected_returns[0]))])
+    def next_generation_by_differential_evolution(self, average_expected_returns, covariance):
+        mutation_vectors = self.__generate_mutation_vectors()
 
-    def compute_fitness(self, average_expected_returns, covariance):
+    def __generate_mutation_vectors(self):
+        mutation_vectors = np.array([])
+        for i in range(len(self.chromosomes)):
+            c1 = self.__select_different_chromosome_index([i])
+            c2 = self.__select_different_chromosome_index([i, c1])
+            f = random.random()
+            mutation_vectors = np.append(mutation_vectors, self.__generate_mutation_vector_de_current(i, c1, c2, f))
+
+    def __generate_mutation_vector_de_current(self, current, c1, c2, f):
+        mutation_vector = Chromosome()
+        for i in range(len(mutation_vector.genes)):
+            mutation_vector.genes[i] = self.chromosomes[current].genes[i] + f * (self.chromosomes[c1].genes[i] -
+                                                                                     self.chromosomes[c2].genes[i])
+        return mutation_vector
+
+    def __compute_fitness(self, average_expected_returns, covariance):
         for chromosome in self.chromosomes:
-            numerator = self.compute_chromosome_return(chromosome, average_expected_returns)
-            denominator = self.compute_risk(chromosome, covariance)
+            numerator = chromosome.compute_chromosome_return(average_expected_returns)
+            denominator = chromosome.compute_risk(covariance)
             self.fitness = np.append(self.fitness, [numerator / denominator])
 
-    def sort(self):
+    def __sort(self):
         sorted_pairs = sorted(zip(self.fitness, self.chromosomes), key=lambda x: x[0])
         self.fitness = [i[0] for i in sorted_pairs]
         self.chromosomes = [i[1] for i in sorted_pairs]
 
     def __cross(self, f1_index, f2_index, alpha):
-        h1, h2 = Chromosome(), Chromosome()
-        for i in range(len(h1.genes)):
-            h1.genes[i] = \
+        children1, children2 = Chromosome(), Chromosome()
+        for i in range(len(children1.genes)):
+            children1.genes[i] = \
                 self.chromosomes[f1_index].genes[i] * (1 - alpha) + self.chromosomes[f2_index].genes[i] * alpha
-            h2.genes[i] = \
+            children2.genes[i] = \
                 self.chromosomes[f2_index].genes[i] * (1 - alpha) + self.chromosomes[f1_index].genes[i] * alpha
-        h1.normalize()
-        h2.normalize()
-        return [h1, h2]
+        children1.normalize()
+        children2.normalize()
+        return [children1, children2]
 
     def __select_different_chromosome_index(self, index_list: list):
         index2 = index_list[0]
@@ -115,45 +143,25 @@ class Population:
             self.chromosomes[i] = children[i]
             i += 1
 
-    def next_generation(self):
-        children = self.__select_by_tournament()
-        self.__mutate(children)
-        self.__replacement(children)
-        self.__prepare_for_next_iteration()
-
-    def next_generation_by_differential_evolution(self):
-        mutation_vector = np.array([])
-        for i in range(len(self.chromosomes)):
-            c1 = self.__select_different_chromosome_index([i])
-            c2 = self.__select_different_chromosome_index([i, c1])
-            f = 0.63
-            # mutation_vector = np.append(mutation_vector, [[x for x in ]])
-
-    def __prepare_for_next_iteration(self):
-        self.fitness = np.array([])
-
 
 if __name__ == '__main__':
     portfolio = PortfolioData()
     print(portfolio.assets.to_string())
     print(portfolio.returns.to_string())
     print(portfolio.average_expected_return.to_string())
-    population = Population()
-    population.compute_fitness(portfolio.average_expected_return.to_numpy(copy=True), portfolio.covariance)
-    population.sort()
+    population: Population = Population(portfolio.average_expected_return.to_numpy(copy=True), portfolio.covariance)
     print("start")
     print(population.fitness[-1])
     best_fitness_history = [population.fitness[-1]]
-    enough_convergence = 80
-    while enough_convergence != 0:
-        population.next_generation()
-        population.compute_fitness(portfolio.average_expected_return.to_numpy(copy=True), portfolio.covariance)
-        population.sort()
+    convergence_iterations = 100
+    current_iterations = convergence_iterations
+    while current_iterations > 0:
+        population.next_generation(portfolio.average_expected_return.to_numpy(copy=True), portfolio.covariance)
         best_fitness_history.append(population.fitness[-1])
         if best_fitness_history[-1] == best_fitness_history[-2]:
-            enough_convergence -= 1
+            current_iterations -= 1
         else:
-            enough_convergence = 80
+            current_iterations = convergence_iterations
     print(population.fitness[-1])
     plt.plot([i for i in range(len(best_fitness_history))], best_fitness_history)
     plt.show()
@@ -161,8 +169,8 @@ if __name__ == '__main__':
     print(pd.DataFrame([population.chromosomes[-1].genes], columns=portfolio.assets.columns).to_string())
     plt.pie(population.chromosomes[-1].genes, labels=portfolio.assets.columns)
     plt.show()
-    chromosome_return = population.compute_chromosome_return(population.chromosomes[-1],
-                                                             portfolio.average_expected_return.to_numpy())
-    chromosome_risk = population.compute_risk(population.chromosomes[-1], portfolio.covariance)
+    chromosome_return = population.chromosomes[-1].compute_chromosome_return(
+        portfolio.average_expected_return.to_numpy())
+    chromosome_risk = population.chromosomes[-1].compute_risk(portfolio.covariance)
     plt.bar(['Return', 'Risk'], [chromosome_return, chromosome_risk])
     plt.show()
