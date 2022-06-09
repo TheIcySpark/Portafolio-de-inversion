@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import random
+from enum import Enum
 
 
 class Chromosome:
@@ -57,13 +58,20 @@ class PortfolioData:
 
 class Population:
     def __init__(self, average_expected_returns, covariance):
+        # Se almacenan los retornos en promedio
         self.average_expected_returns = average_expected_returns
+        # se almacena la tabla se covarianza
         self.covariance = covariance
+        # Se crea una poblacion de 100 cromosomas
         self.chromosomes = np.array([Chromosome() for i in range(100)])
+        # se utiliza un array para el calculo del fitness
         self.fitness = np.array([])
+        # Al iniciar se calcula el fitness
         self.__compute_fitness()
+        # Se ordena la poblacion en base al fitness
         self.__sort()
 
+    # Esta funcion genera la siguiente generacion de la poblacion usando el algoritmo genetico
     def next_generation(self):
         children = self.__select_by_tournament()
         self.__mutate(children)
@@ -71,6 +79,7 @@ class Population:
         self.__compute_fitness()
         self.__sort()
 
+    # Esta funcion genera la siguente generacion de la poblacion usando el algoritmo diferencial
     def next_generation_by_differential_evolution(self):
         mutation_vectors = self.__generate_mutation_vectors()
         children = self.__differential_cross(mutation_vectors)
@@ -78,17 +87,20 @@ class Population:
         self.__compute_fitness()
         self.__sort()
 
+    # Remplazo usando el algoritmo diferencial
     def __differential_replacement(self, children):
         for chromosome_index in range(len(self.chromosomes)):
             if self.__target_function(children[chromosome_index]) > self.__target_function(
                     self.chromosomes[chromosome_index]):
                 self.chromosomes[chromosome_index] = children[chromosome_index]
 
+    # Retorna el valor de la funcion objetivo con un cromosoma especifico
     def __target_function(self, chromosome):
         numerator = chromosome.compute_chromosome_return(self.average_expected_returns)
         denominator = chromosome.compute_risk(self.covariance)
         return numerator / denominator
 
+    # Genera los vectores de mutacion
     def __generate_mutation_vectors(self):
         mutation_vectors = np.array([])
         for i in range(len(self.chromosomes)):
@@ -98,6 +110,7 @@ class Population:
             mutation_vectors = np.append(mutation_vectors, [self.__generate_mutation_vector_de_current(i, c1, c2, f)])
         return mutation_vectors
 
+    # Realiza la crusa en el algoritmo diferencial
     def __differential_cross(self, mutation_vectors):
         children = np.array([])
         for chromosome_index in range(len(self.chromosomes)):
@@ -113,6 +126,7 @@ class Population:
             children = np.append(children, [new_child])
         return children
 
+    # Genera vectores de mutacion usando De/current
     def __generate_mutation_vector_de_current(self, current, c1, c2, f):
         mutation_vector = Chromosome()
         for i in range(len(mutation_vector.genes)):
@@ -121,16 +135,19 @@ class Population:
         mutation_vector.normalize()
         return mutation_vector
 
+    # Calcula el fitness de la poblacion
     def __compute_fitness(self):
         self.fitness = np.array([])
         for chromosome in self.chromosomes:
             self.fitness = np.append(self.fitness, [self.__target_function(chromosome)])
 
+    # Ordena la poblacion en base al fitness
     def __sort(self):
         sorted_pairs = sorted(zip(self.fitness, self.chromosomes), key=lambda x: x[0])
         self.fitness = [i[0] for i in sorted_pairs]
         self.chromosomes = [i[1] for i in sorted_pairs]
 
+    # Realiza la cruza en el algoritmo genetico
     def __cross(self, f1_index, f2_index, alpha):
         children1, children2 = Chromosome(), Chromosome()
         for i in range(len(children1.genes)):
@@ -142,12 +159,14 @@ class Population:
         children2.normalize()
         return [children1, children2]
 
+    # Selecciona un indice que no este en la lista index_list
     def __select_different_chromosome_index(self, index_list: list):
         index2 = index_list[0]
         while index2 in index_list:
             index2 = random.randint(0, len(self.chromosomes) - 1)
         return index2
 
+    # Realiza la seleccion por torneo
     def __select_by_tournament(self):
         children = np.array([])
         for i in range(40):
@@ -161,14 +180,16 @@ class Population:
             children = np.append(children, self.__cross(f1_index, f2_index, alpha))
         return children
 
+    # Realiza la mutacion en el algoritmo genetico
     @staticmethod
     def __mutate(children):
         mutation_population_size = random.randint(1, 4)
         mutation_index_list = np.random.choice([x for x in range(80)], mutation_population_size)
-        for i in mutation_index_list:
-            children[i].genes[random.randint(0, 9)] = random.random()
-            children[i].normalize()
+        for chromosome_index in mutation_index_list:
+            children[chromosome_index].genes[random.randint(0, 9)] = random.random()
+            children[chromosome_index].normalize()
 
+    # Realiza el remplazo en el algoritmo genetico
     def __replacement(self, children):
         i = 0
         while i < 80:
@@ -176,12 +197,13 @@ class Population:
             i += 1
 
 
-def use_genetic():
-    convergence_iterations = 100
-    population: Population = Population(portfolio.average_expected_return.to_numpy(copy=True), portfolio.covariance)
-    print("start")
-    print(population.fitness[-1])
-    best_fitness_history = [population.fitness[-1]]
+class EvolutionaryAlgorithm(Enum):
+    GENETIC = 1
+    DIFFERENTIAL = 2
+
+
+def use_genetic(population: Population, best_fitness_history):
+    convergence_iterations = 500
     current_iterations = convergence_iterations
     while current_iterations > 0:
         population.next_generation()
@@ -190,35 +212,29 @@ def use_genetic():
             current_iterations -= 1
         else:
             current_iterations = convergence_iterations
-    print(population.fitness[-1])
-    plt.plot([i for i in range(len(best_fitness_history))], best_fitness_history)
-    plt.show()
-    print(pd.DataFrame([population.chromosomes[-1].genes], columns=portfolio.assets.columns).to_string())
-    plt.pie(population.chromosomes[-1].genes, labels=portfolio.assets.columns)
-    plt.show()
-    chromosome_return = population.chromosomes[-1].compute_chromosome_return(
-        portfolio.average_expected_return.to_numpy())
-    chromosome_risk = population.chromosomes[-1].compute_risk(portfolio.covariance)
-    plt.bar(['Return', 'Risk'], [chromosome_return, chromosome_risk])
-    plt.show()
 
 
-def use_differential():
+def use_differential(population: Population, best_fitness_history):
     convergence_iterations = 50
-    population: Population = Population(portfolio.average_expected_return.to_numpy(copy=True), portfolio.covariance)
-    print("start")
-    print(population.fitness[-1])
-    best_fitness_history = [population.fitness[-1]]
     current_iterations = convergence_iterations
     while current_iterations > 0:
         population.next_generation_by_differential_evolution()
         best_fitness_history.append(population.fitness[-1])
-        print(population.fitness[-1])
         if best_fitness_history[-1] == best_fitness_history[-2]:
             current_iterations -= 1
         else:
             current_iterations = convergence_iterations
+
+
+def use_evolutionary_algorithm(evolutionary_algorithm: EvolutionaryAlgorithm):
+    population: Population = Population(portfolio.average_expected_return.to_numpy(copy=True), portfolio.covariance)
     print(population.fitness[-1])
+    best_fitness_history = [population.fitness[-1]]
+    if evolutionary_algorithm == EvolutionaryAlgorithm.GENETIC:
+        use_genetic(population, best_fitness_history)
+    elif evolutionary_algorithm == EvolutionaryAlgorithm.DIFFERENTIAL:
+        use_differential(population, best_fitness_history)
+    print(best_fitness_history[-1])
     plt.plot([i for i in range(len(best_fitness_history))], best_fitness_history)
     plt.show()
     print(pd.DataFrame([population.chromosomes[-1].genes], columns=portfolio.assets.columns).to_string())
@@ -231,11 +247,11 @@ def use_differential():
     plt.show()
 
 
-if __name__ == '__main__':
-    portfolio = PortfolioData()
+def show_portfolio_info(portfolio: PortfolioData):
     print(portfolio.assets.to_string())
     print(portfolio.returns.to_string())
     print(portfolio.average_expected_return.to_string())
-    use_differential()
-    use_genetic()
 
+if __name__ == '__main__':
+    portfolio = PortfolioData()
+    show_portfolio_info(portfolio)
